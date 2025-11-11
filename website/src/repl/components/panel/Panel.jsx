@@ -9,7 +9,9 @@ import { useLogger } from '../useLogger';
 import { WelcomeTab } from './WelcomeTab';
 import { PatternsTab } from './PatternsTab';
 import { AITab } from './AITab';
+import { HistoryTab } from './HistoryTab';
 import { ChevronLeftIcon, XMarkIcon } from '@heroicons/react/16/solid';
+import { AuthProvider } from '@src/auth/AuthContext';
 
 const TAURI = typeof window !== 'undefined' && window.__TAURI__;
 
@@ -18,24 +20,26 @@ export function HorizontalPanel({ context }) {
   const { isPanelOpen, activeFooter: tab } = settings;
 
   return (
-    <PanelNav
-      settings={settings}
-      className={cx(isPanelOpen ? `min-h-[360px] max-h-[360px]` : 'min-h-12 max-h-12', 'overflow-hidden flex flex-col')}
-    >
-      {isPanelOpen && (
-        <div className="flex h-full overflow-auto pr-10 ">
-          <PanelContent context={context} tab={tab} />
+    <AuthProvider>
+      <PanelNav
+        settings={settings}
+        className={cx(isPanelOpen ? `min-h-[360px] max-h-[360px]` : 'min-h-12 max-h-12', 'overflow-hidden flex flex-col')}
+      >
+        {isPanelOpen && (
+          <div className="flex h-full overflow-auto pr-10 ">
+            <PanelContent context={context} tab={tab} />
+          </div>
+        )}
+
+        <div className="absolute right-4 pt-4">
+          <PanelActionButton settings={settings} />
         </div>
-      )}
 
-      <div className="absolute right-4 pt-4">
-        <PanelActionButton settings={settings} />
-      </div>
-
-      <div className="flex  justify-between min-h-12 max-h-12 grid-cols-2 items-center">
-        <Tabs setTab={setTab} tab={tab} />
-      </div>
-    </PanelNav>
+        <div className="flex  justify-between min-h-12 max-h-12 grid-cols-2 items-center">
+          <Tabs setTab={setTab} tab={tab} />
+        </div>
+      </PanelNav>
+    </AuthProvider>
   );
 }
 
@@ -44,35 +48,37 @@ export function VerticalPanel({ context }) {
   const { activeFooter: tab, isPanelOpen } = settings;
 
   return (
-    <PanelNav
-      settings={settings}
-      className={cx(isPanelOpen ? `min-w-[min(600px,80vw)] max-w-[min(600px,80vw)]` : 'min-w-12 max-w-12')}
-    >
-      {isPanelOpen ? (
-        <div className={cx('flex flex-col h-full')}>
-          <div className="flex justify-between w-full ">
-            <Tabs setTab={setTab} tab={tab} />
-            <PanelActionButton settings={settings} />
-          </div>
+    <AuthProvider>
+      <PanelNav
+        settings={settings}
+        className={cx(isPanelOpen ? `min-w-[min(600px,80vw)] max-w-[min(600px,80vw)]` : 'min-w-12 max-w-12')}
+      >
+        {isPanelOpen ? (
+          <div className={cx('flex flex-col h-full')}>
+            <div className="flex justify-between w-full ">
+              <Tabs setTab={setTab} tab={tab} />
+              <PanelActionButton settings={settings} />
+            </div>
 
-          <div className="overflow-auto h-full">
-            <PanelContent context={context} tab={tab} />
+            <div className="overflow-auto h-full">
+              <PanelContent context={context} tab={tab} />
+            </div>
           </div>
-        </div>
-      ) : (
-        <button
-          onClick={(e) => {
-            setIsPanelOpened(true);
-          }}
-          aria-label="open menu panel"
-          className={cx(
-            'flex flex-col hover:bg-lineBackground items-center cursor-pointer justify-center w-full  h-full',
-          )}
-        >
-          <ChevronLeftIcon className="text-foreground opacity-50 w-6 h-6" />
-        </button>
-      )}
-    </PanelNav>
+        ) : (
+          <button
+            onClick={(e) => {
+              setIsPanelOpened(true);
+            }}
+            aria-label="open menu panel"
+            className={cx(
+              'flex flex-col hover:bg-lineBackground items-center cursor-pointer justify-center w-full  h-full',
+            )}
+          >
+            <ChevronLeftIcon className="text-foreground opacity-50 w-6 h-6" />
+          </button>
+        )}
+      </PanelNav>
+    </AuthProvider>
   );
 }
 
@@ -84,6 +90,7 @@ const tabNames = {
   console: 'console',
   settings: 'settings',
   ai: 'ai',
+  history: 'history',
 };
 if (TAURI) {
   tabNames.files = 'files';
@@ -134,6 +141,8 @@ function PanelContent({ context, tab }) {
       return <FilesTab />;
     case tabNames.ai:
       return <AITab context={context} />;
+    case tabNames.history:
+      return <HistoryTab context={context} />;
     default:
       return <WelcomeTab context={context} />;
   }

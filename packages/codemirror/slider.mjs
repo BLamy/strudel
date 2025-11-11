@@ -44,10 +44,20 @@ export class SliderWidget extends WidgetType {
       const next = e.target.value;
       let insert = next;
       //let insert = next.toFixed(2);
-      const to = slider.from + slider.originalValue.length;
+
+      // Use the 'to' position that was set during initialization or updated by the decoration mapper
+      // This correctly handles both simple values like slider(0.5) and object configs like slider({min:0, max:1, value:0.5})
+      const to = slider.to ?? (slider.from + String(this.value ?? '').length);
+
       let change = { from: slider.from, to, insert };
+
+      // Update stored values AFTER calculating 'to' but BEFORE dispatch
       slider.originalValue = insert;
       slider.value = insert;
+
+      // Update the 'to' position for the next change
+      slider.to = slider.from + String(insert).length;
+
       this.view.dispatch({ changes: change });
       const id = getSliderID(slider.originalFrom); // matches id generated in transpiler
       window.postMessage({ type: 'cm-slider', value: Number(next), id });

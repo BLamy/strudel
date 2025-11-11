@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import Loader from '@src/repl/components/Loader';
 import { HorizontalPanel, VerticalPanel } from '@src/repl/components/panel/Panel';
 import { Code } from '@src/repl/components/Code';
@@ -22,17 +22,71 @@ export default function ReplEditor(Props) {
   // Timeline state and functionality
   const timeline = useTimeline();
   const [selectedSegment, setSelectedSegment] = useState(null);
+  const [isManualEditing, setIsManualEditing] = useState(false);
+  const manualEditTimeoutRef = useRef(null);
+  const lastEditorCodeRef = useRef('');
 
-  // Timeline playback synchronization
+  // Timeline playback synchronization with manual edit detection
   useTimelinePlayback({
     timeline,
     editorRef,
     replStarted: started,
+    isManualEditing,
   });
+
+  // Set up code change listener for live editing
+  useEffect(() => {
+    if (!editorRef?.current?.repl) return;
+
+    // Store reference to StrudelMirror's onUpdateState
+    const originalOnUpdateState = editorRef.current.repl.onUpdateState;
+
+    // Override to detect manual edits
+    const handleCodeChange = (state) => {
+      if (originalOnUpdateState) {
+        originalOnUpdateState(state);
+      }
+
+      const currentCode = state.code || '';
+
+      // Only track changes if a segment is selected
+      if (selectedSegment) {
+        // Detect if user is manually editing (code changed but not from timeline)
+        if (currentCode !== lastEditorCodeRef.current) {
+          // User is editing - pause timeline control
+          setIsManualEditing(true);
+
+          // Update the selected segment with new code
+          timeline.updateSegment(selectedSegment.trackId, selectedSegment.id, { code: currentCode });
+
+          // Clear existing timeout
+          if (manualEditTimeoutRef.current) {
+            clearTimeout(manualEditTimeoutRef.current);
+          }
+
+          // Resume timeline control after 2 seconds of no edits
+          manualEditTimeoutRef.current = setTimeout(() => {
+            setIsManualEditing(false);
+          }, 2000);
+        }
+      }
+
+      lastEditorCodeRef.current = currentCode;
+    };
+
+    editorRef.current.repl.onUpdateState = handleCodeChange;
+
+    return () => {
+      if (manualEditTimeoutRef.current) {
+        clearTimeout(manualEditTimeoutRef.current);
+      }
+    };
+  }, [editorRef, selectedSegment, timeline]);
 
   // Handle segment selection - update editor and notify AI
   const handleSegmentSelect = useCallback((segment) => {
     setSelectedSegment(segment);
+    lastEditorCodeRef.current = segment?.code || '';
     if (segment && editorRef?.current) {
       // Focus the segment's code in the main editor
       editorRef.current.setCode(segment.code);

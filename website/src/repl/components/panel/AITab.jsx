@@ -4,6 +4,10 @@ import { transpiler } from '@strudel/transpiler';
 import { StrudelMirror } from '@strudel/codemirror';
 import { getAudioContext, webaudioOutput } from '@strudel/webaudio';
 import { silence } from '@strudel/core';
+import { addBeatToHistory } from './HistoryTab';
+import { useAuth } from '@src/auth/AuthContext';
+import { LoginPage } from '@src/auth/LoginPage';
+import { useEncryptedLocalStorage } from '@src/auth/useEncryptedLocalStorage';
 
 const SYSTEM_PROMPT = `You are an expert AI assistant for Strudel, a web-based live coding environment for algorithmic pattern and music generation. Strudel is an official JavaScript port of TidalCycles, originally written in Haskell.
 
@@ -25,28 +29,28 @@ let lead = note("[0 4 0 9 7]*4")
   .scale('G minor')
   .add(note(-12))
   .s("sawtooth")
-  .cutoff(slider({min: 200, max: 3000, value: 500, label: "Lead Cutoff"}))
-  .resonance(slider({min: 0, max: 10, value: 4, label: "Lead Resonance"}))
-  .gain(slider({min: 0, max: 1, value: 0.6, label: "Lead Gain"}));
+  .cutoff(slider(500))
+  .resonance(slider(4))
+  .gain(slider(.6));
 
 // Kick with volume control
 let kick = s("bd(1,4)").bank("tr909")
-  .gain(slider({min: 0, max: 1, value: 1, label: "Kick Gain"}));
+  .gain(slider(1));
 
 // Bass with filter control
 let bass = note("[0 4 0 9 7]*4")
   .scale('G minor')
   .add(note(-36))
   .s("sawtooth")
-  .cutoff(slider({min: 500, max: 4000, value: 2000, label: "Bass Cutoff"}))
-  .gain(slider({min: 0, max: 1, value: 0.5, label: "Bass Gain"}));
+  .cutoff(slider(2000))
+  .gain(slider(0.5));
 
 // High melody with volume
 let top = note("<7 10 14 19>")
   .scale('G minor')
   .add(note(12))
   .s("triangle")
-  .gain(slider({min: 0, max: 1, value: 0.4, label: "Top Gain"}));
+  .gain(slider(0.4));
 
 stack(kick, lead, bass, top)
 \`\`\`
@@ -75,7 +79,7 @@ In Strudel, only the LAST expression in your code gets played. To play multiple 
 stack(
   s("bd sd bd sd"),           // drums
   note("c e g").s("piano"),   // melody
-  s("hh*8").gain(0.5)         // hi-hats
+  s("hh*8").gain(slider(0.5))         // hi-hats
 )
 \`\`\`
 
@@ -83,7 +87,7 @@ stack(
 // WRONG - Only the last line plays:
 s("bd sd bd sd")              // This won't play!
 note("c e g").s("piano")      // This won't play either!
-s("hh*8").gain(0.5)           // Only this plays
+s("hh*8").gain(slider(0.5))           // Only this plays
 \`\`\`
 
 ### GOOD Response Format (Multiple Variations):
@@ -126,7 +130,7 @@ stack(
   note("<c2 a1 f1>").s("sawtooth")
     .cutoff(400)
     .resonance(3)
-    .gain(0.6)
+    .gain(slider(0.6))
 )
 .every(8, x => x.gain(0))  // drops every 8 cycles for bigger impact
 \`\`\`
@@ -462,6 +466,7 @@ function CodePreview({ code, onInsertCode, onAddToTimeline, validation, previewI
         drawTime: [0, 0],
         bgFill: false,
         solo: false, // Don't stop other repls when this preview plays
+        enableKeyboard: false, // Disable keyboard shortcuts to prevent conflicts
       });
       editorRef.current = editor;
     }
@@ -505,7 +510,7 @@ function CodePreview({ code, onInsertCode, onAddToTimeline, validation, previewI
       <div className={`border rounded-md overflow-hidden ${hasError ? 'border-red-500 border-2' : 'border-gray-300 dark:border-gray-600'}`}>
         <div
           ref={containerRef}
-          className="bg-gray-900 text-gray-100"
+          className="bg-gray-900 text-gray-100 overflow-auto"
           style={{ minHeight: '120px', maxHeight: '300px' }}
         />
       </div>
@@ -590,26 +595,36 @@ function CodePreview({ code, onInsertCode, onAddToTimeline, validation, previewI
             Select track to add segment:
           </div>
           <div className="flex flex-col gap-1">
-            {onAddToTimeline.tracks?.map((track) => (
+            {onAddToTimeline.tracks?.length > 0 ? (
+              onAddToTimeline.tracks.map((track) => (
+                <button
+                  key={track.id}
+                  onClick={() => {
+                    onAddToTimeline.addSegment(track.id, editedCode);
+                    setShowTrackSelector(false);
+                  }}
+                  className="flex items-center gap-2 px-2 py-1 text-xs rounded bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
+                >
+                  <div
+                    className="w-3 h-3 rounded-full flex-shrink-0"
+                    style={{ backgroundColor: track.color }}
+                  />
+                  <span className="text-gray-900 dark:text-gray-100">{track.name}</span>
+                </button>
+              ))
+            ) : (
               <button
-                key={track.id}
                 onClick={() => {
-                  onAddToTimeline.addSegment(track.id, editedCode);
+                  onAddToTimeline.addSegment(null, editedCode);
                   setShowTrackSelector(false);
                 }}
-                className="flex items-center gap-2 px-2 py-1 text-xs rounded bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
+                className="flex items-center gap-2 px-2 py-1 text-xs rounded bg-blue-500 hover:bg-blue-600 text-white transition-colors"
               >
-                <div
-                  className="w-3 h-3 rounded-full flex-shrink-0"
-                  style={{ backgroundColor: track.color }}
-                />
-                <span className="text-gray-900 dark:text-gray-100">{track.name}</span>
+                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
+                </svg>
+                <span>Create Track & Add Segment</span>
               </button>
-            ))}
-            {(!onAddToTimeline.tracks || onAddToTimeline.tracks.length === 0) && (
-              <div className="text-xs text-gray-500 dark:text-gray-400 italic">
-                No tracks yet. Add a track in the timeline first.
-              </div>
             )}
           </div>
         </div>
@@ -688,9 +703,11 @@ function MessageContent({ content, role, onInsertCode, onAddToTimeline, displayC
   );
 }
 
-export function AITab({ context }) {
+// Internal component with encrypted API key management
+function AITabInternal({ context }) {
   const { fontFamily } = useSettings();
-  const [apiKey, setApiKey] = useState('');
+  const { logout } = useAuth();
+  const [apiKey, setApiKey] = useEncryptedLocalStorage('anthropic_api_key', '');
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -817,6 +834,13 @@ User request: ${input}`;
       const codeBlocks = parseCodeBlocks(assistantMessage.content);
       const errors = codeBlocks.filter((block) => !block.validation.valid);
 
+      // Save valid code blocks to history
+      codeBlocks.forEach((block) => {
+        if (block.validation.valid) {
+          addBeatToHistory(block.code);
+        }
+      });
+
       // If there are validation errors, automatically send them back to the AI
       if (errors.length > 0) {
         const errorDetails = errors
@@ -890,6 +914,14 @@ Please provide a corrected version with valid Strudel/JavaScript syntax.`;
         content: data.content[0].text,
       };
       setMessages((prev) => [...prev, assistantMessage]);
+
+      // Save valid code blocks from correction to history
+      const codeBlocks = parseCodeBlocks(assistantMessage.content);
+      codeBlocks.forEach((block) => {
+        if (block.validation.valid) {
+          addBeatToHistory(block.code);
+        }
+      });
     } catch (err) {
       setError(err.message || 'Failed to send correction request');
       console.error('Error:', err);
@@ -944,7 +976,7 @@ Please provide a corrected version with valid Strudel/JavaScript syntax.`;
               autoFocus
             />
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-              Your API key is stored in memory only and is never sent anywhere except directly to Anthropic.
+              Your API key is encrypted using your passkey and stored securely in your browser. It's never sent anywhere except directly to Anthropic.
             </p>
           </div>
 
@@ -974,13 +1006,22 @@ Please provide a corrected version with valid Strudel/JavaScript syntax.`;
     <div className="flex flex-col h-full min-w-full pt-2 font-sans pb-4 px-4" style={{ fontFamily }}>
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-xl font-bold">꩜ AI Assistant</h3>
-        <button
-          onClick={() => setApiKey('')}
-          className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
-          title="Change API key"
-        >
-          Change Key
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setApiKey('')}
+            className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+            title="Change API key"
+          >
+            Change Key
+          </button>
+          <button
+            onClick={logout}
+            className="text-xs text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 transition-colors"
+            title="Logout and clear passkey"
+          >
+            Logout
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -1057,4 +1098,15 @@ Please provide a corrected version with valid Strudel/JavaScript syntax.`;
       </div>
     </div>
   );
+}
+
+// Export component - authentication is now handled at Panel level
+export function AITab({ context }) {
+  const { isAuthenticated } = useAuth();
+
+  if (!isAuthenticated) {
+    return <LoginPage />;
+  }
+
+  return <AITabInternal context={context} />;
 }
