@@ -3,9 +3,9 @@
 ![vibecoder](./strudle-vibecoder.png)
 
 Live coding patterns on the web
-https://strudel.cc/
+https://blamy.github.io/strudel/
 
-- Try it here: <https://strudel.cc>
+- Try it here: <https://blamy.github.io/strudel/>
 - Docs: <https://strudel.cc/learn>
 - Technical Blog Post: <https://loophole-letters.vercel.app/strudel>
 - 1 Year of Strudel Blog Post: <https://loophole-letters.vercel.app/strudel1year>
