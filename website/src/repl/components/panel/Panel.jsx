@@ -8,6 +8,7 @@ import { SoundsTab } from './SoundsTab';
 import { useLogger } from '../useLogger';
 import { WelcomeTab } from './WelcomeTab';
 import { PatternsTab } from './PatternsTab';
+import { AITab } from './AITab';
 import { ChevronLeftIcon, XMarkIcon } from '@heroicons/react/16/solid';
 
 const TAURI = typeof window !== 'undefined' && window.__TAURI__;
@@ -82,6 +83,7 @@ const tabNames = {
   reference: 'reference',
   console: 'console',
   settings: 'settings',
+  ai: 'ai',
 };
 if (TAURI) {
   tabNames.files = 'files';
@@ -130,6 +132,8 @@ function PanelContent({ context, tab }) {
       return <SettingsTab started={context.started} />;
     case tabNames.files:
       return <FilesTab />;
+    case tabNames.ai:
+      return <AITab context={context} />;
     default:
       return <WelcomeTab context={context} />;
   }
