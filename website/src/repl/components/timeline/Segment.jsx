@@ -155,7 +155,7 @@ export function Segment({
       <canvas
         ref={canvasRef}
         className="absolute inset-0 pointer-events-none opacity-40"
-        width={Math.max(width, 10)}
+        width={400}
         height={60}
         style={{ width: '100%', height: '100%' }}
       />

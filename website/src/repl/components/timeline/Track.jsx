@@ -33,8 +33,9 @@ export function Track({
             type="text"
             value={track.name}
             onChange={(e) => onUpdateTrack(track.id, { name: e.target.value })}
-            className="flex-1 bg-transparent text-sm text-white font-medium focus:outline-none focus:bg-gray-700 px-1 rounded"
+            className="flex-1 min-w-0 bg-transparent text-sm text-white font-medium focus:outline-none focus:bg-gray-700 px-1 rounded truncate"
             placeholder="Track name"
+            maxLength={20}
           />
         </div>
 

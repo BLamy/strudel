@@ -38,9 +38,12 @@ export function WaveformCard({
   // Initialize editor on mount (always render, just hide when collapsed)
   useEffect(() => {
     if (containerRef.current && !editorRef.current) {
+      // Wrap code with .analyze() to route audio to analyser
+      const wrappedCode = `(${code.trim()}).analyze("${uniqueId}")`;
+
       const editor = new StrudelMirror({
         root: containerRef.current,
-        initialCode: code,
+        initialCode: wrappedCode,
         pattern: silence,
         defaultOutput: webaudioOutput,
         getTime: () => getAudioContext().currentTime,
@@ -59,7 +62,7 @@ export function WaveformCard({
         editorRef.current.repl?.stop();
       }
     };
-  }, [code]);
+  }, [code, uniqueId]);
 
   // Stop preview when another starts
   useEffect(() => {
@@ -68,11 +71,12 @@ export function WaveformCard({
     }
   }, [isPlaying]);
 
-  // Waveform visualization
-  useSegmentWaveform(canvasRef.current, uniqueId, isPlaying, cardColor, {
+  // Waveform visualization - use white for visibility on colored background
+  useSegmentWaveform(canvasRef.current, uniqueId, isPlaying, '#ffffff', {
     fftSize: 2048,
-    smoothingTimeConstant: 0.5,
-    captureFrames: 60,
+    smoothingTimeConstant: 0.8,
+    lineWidth: 2,
+    scale: 0.8,
   });
 
   const handlePlay = () => {

@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { Track } from './Track';
+import { Segment } from './Segment';
 import { Playhead } from './Playhead';
 
 const PIXELS_PER_SECOND = 50; // Zoom level: pixels per second
@@ -320,6 +321,12 @@ export function TimelinePanel({ context, onSegmentSelect }) {
                 <div
                   ref={scrollContainerRef}
                   className="flex-1 overflow-x-auto overflow-y-hidden"
+                  onScroll={(e) => {
+                    // Sync all track scrolls with ruler
+                    document.querySelectorAll('.track-scroll-container').forEach((el) => {
+                      el.scrollLeft = e.target.scrollLeft;
+                    });
+                  }}
                 >
                   <div className="relative h-6" style={{ width: `${contentWidth}px` }}>
                     {timeMarkers.map((time) => (
@@ -338,40 +345,124 @@ export function TimelinePanel({ context, onSegmentSelect }) {
                 </div>
               </div>
 
-              {/* Tracks - with vertical scrolling */}
-              <div className="flex-1 overflow-y-auto overflow-x-hidden">
-                <div className="relative">
-                  {tracks.map((track) => (
-                    <div key={track.id} className="flex">
-                      <Track
-                        track={track}
-                        pixelsPerSecond={PIXELS_PER_SECOND}
-                        selectedSegmentId={selectedSegmentId}
-                        playheadPosition={playheadPosition}
-                        onSelectSegment={selectSegment}
-                        onRemoveSegment={removeSegment}
-                        onRemoveTrack={removeTrack}
-                        onUpdateTrack={updateTrack}
-                        onUpdateSegment={updateSegment}
-                        onToggleMute={handleToggleMute}
-                        onToggleSolo={handleToggleSolo}
-                      />
-                    </div>
-                  ))}
+              {/* Tracks - with vertical and horizontal scrolling */}
+              <div className="flex-1 overflow-y-auto overflow-x-hidden flex flex-col">
+                {tracks.map((track) => (
+                  <div key={track.id} className="flex border-b border-gray-700 dark:border-gray-600">
+                    {/* Track Header */}
+                    <div className="w-48 flex-shrink-0 border-r border-gray-700 dark:border-gray-600 p-2 flex flex-col justify-between bg-gray-800 dark:bg-gray-900">
+                      <div className="flex items-center gap-2">
+                        <div
+                          className="w-3 h-3 rounded-full flex-shrink-0"
+                          style={{ backgroundColor: track.color }}
+                        />
+                        <input
+                          type="text"
+                          value={track.name}
+                          onChange={(e) => updateTrack(track.id, { name: e.target.value })}
+                          className="flex-1 min-w-0 bg-transparent text-sm text-white font-medium focus:outline-none focus:bg-gray-700 px-1 rounded truncate"
+                          placeholder="Track name"
+                          maxLength={20}
+                        />
+                      </div>
 
-                  {/* Playhead (overlays all tracks) */}
-                  <div
-                    className="absolute top-0 bottom-0 pointer-events-none"
-                    style={{ left: '192px' }} // Account for track header width
-                  >
-                    <Playhead
-                      position={playheadPosition}
-                      pixelsPerSecond={PIXELS_PER_SECOND}
-                    />
+                      <div className="flex items-center gap-1 mt-2">
+                        {/* Mute Button */}
+                        <button
+                          onClick={() => handleToggleMute(track.id)}
+                          className={`px-2 py-0.5 text-[10px] font-bold rounded transition-colors ${
+                            track.muted
+                              ? 'bg-red-600 text-white'
+                              : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                          }`}
+                          title="Mute track"
+                        >
+                          M
+                        </button>
+
+                        {/* Solo Button */}
+                        <button
+                          onClick={() => handleToggleSolo(track.id)}
+                          className={`px-2 py-0.5 text-[10px] font-bold rounded transition-colors ${
+                            track.solo
+                              ? 'bg-yellow-600 text-white'
+                              : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                          }`}
+                          title="Solo track"
+                        >
+                          S
+                        </button>
+
+                        {/* Remove Track Button */}
+                        <button
+                          onClick={() => removeTrack(track.id)}
+                          className="ml-auto p-1 text-gray-400 hover:text-red-400 transition-colors"
+                          title="Remove track"
+                        >
+                          <svg
+                            className="w-4 h-4"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                            />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Track Segments - Scrollable with ruler */}
+                    <div className="flex-1 overflow-x-auto overflow-y-hidden track-scroll-container" onScroll={(e) => {
+                      // Sync scroll with ruler
+                      if (scrollContainerRef.current) {
+                        scrollContainerRef.current.scrollLeft = e.target.scrollLeft;
+                      }
+                    }}>
+                      <div
+                        className="relative h-16 bg-gray-900 dark:bg-gray-950"
+                        style={{ width: `${contentWidth}px` }}
+                        onClick={(e) => {
+                          if (e.target === e.currentTarget || e.target.classList.contains('bg-gray-900')) {
+                            selectSegment(null);
+                          }
+                        }}
+                      >
+                        {track.segments.map((segment) => (
+                          <Segment
+                            key={segment.id}
+                            segment={segment}
+                            trackId={track.id}
+                            trackColor={track.color}
+                            pixelsPerSecond={PIXELS_PER_SECOND}
+                            isSelected={selectedSegmentId === segment.id}
+                            playheadPosition={playheadPosition}
+                            onSelect={selectSegment}
+                            onRemove={(segmentId) => removeSegment(track.id, segmentId)}
+                            onUpdateSegment={updateSegment}
+                          />
+                        ))}
+                      </div>
+                    </div>
                   </div>
+                ))}
+
+                {/* Playhead (overlays all tracks) */}
+                <div
+                  className="absolute top-0 bottom-0 pointer-events-none"
+                  style={{ left: '192px' }}
+                >
+                  <Playhead
+                    position={playheadPosition}
+                    pixelsPerSecond={PIXELS_PER_SECOND}
+                  />
+                </div>
                 </div>
               </div>
-            </div>
           )}
         </div>
       )}

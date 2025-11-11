@@ -39,6 +39,14 @@ export function cacheWaveform(segmentId, waveformData) {
       timestamp: Date.now(),
     };
 
+    console.log('Saving waveform to cache:', {
+      key: WAVEFORM_CACHE_KEY,
+      segmentId,
+      maxLength: waveforms[segmentId].maxValues.length,
+      minLength: waveforms[segmentId].minValues.length,
+      totalCached: Object.keys(waveforms).length
+    });
+
     // Limit cache size by removing oldest entries
     const entries = Object.entries(waveforms);
     if (entries.length > MAX_CACHED_WAVEFORMS) {
@@ -49,6 +57,8 @@ export function cacheWaveform(segmentId, waveformData) {
     } else {
       localStorage.setItem(WAVEFORM_CACHE_KEY, JSON.stringify(waveforms));
     }
+
+    console.log('Waveform cache saved successfully');
   } catch (error) {
     console.error('Failed to cache waveform:', error);
   }
