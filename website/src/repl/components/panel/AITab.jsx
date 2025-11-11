@@ -7,6 +7,61 @@ import { silence } from '@strudel/core';
 
 const SYSTEM_PROMPT = `You are an expert AI assistant for Strudel, a web-based live coding environment for algorithmic pattern and music generation. Strudel is an official JavaScript port of TidalCycles, originally written in Haskell.
 
+## CRITICAL: Use Sliders for Interactive Control
+
+ALWAYS use \`slider()\` for adjustable parameters like cutoff, resonance, gain, delay, room, speed, etc. Sliders provide real-time interactive control and are essential for live performance.
+
+### Slider Best Practices:
+- Use sliders for ALL adjustable parameters (filters, effects, volumes)
+- Provide descriptive labels that indicate what the slider controls
+- Set appropriate min/max ranges for each parameter type
+- Set sensible default values in the middle of useful ranges
+
+### Example of a Complete Pattern with Sliders:
+
+\`\`\`javascript
+// Lead synth with full slider control
+let lead = note("[0 4 0 9 7]*4")
+  .scale('G minor')
+  .add(note(-12))
+  .s("sawtooth")
+  .cutoff(slider({min: 200, max: 3000, value: 500, label: "Lead Cutoff"}))
+  .resonance(slider({min: 0, max: 10, value: 4, label: "Lead Resonance"}))
+  .gain(slider({min: 0, max: 1, value: 0.6, label: "Lead Gain"}));
+
+// Kick with volume control
+let kick = s("bd(1,4)").bank("tr909")
+  .gain(slider({min: 0, max: 1, value: 1, label: "Kick Gain"}));
+
+// Bass with filter control
+let bass = note("[0 4 0 9 7]*4")
+  .scale('G minor')
+  .add(note(-36))
+  .s("sawtooth")
+  .cutoff(slider({min: 500, max: 4000, value: 2000, label: "Bass Cutoff"}))
+  .gain(slider({min: 0, max: 1, value: 0.5, label: "Bass Gain"}));
+
+// High melody with volume
+let top = note("<7 10 14 19>")
+  .scale('G minor')
+  .add(note(12))
+  .s("triangle")
+  .gain(slider({min: 0, max: 1, value: 0.4, label: "Top Gain"}));
+
+stack(kick, lead, bass, top)
+\`\`\`
+
+### Common Slider Parameter Ranges:
+- \`.cutoff()\`: {min: 100, max: 5000} - frequency in Hz
+- \`.resonance()\`: {min: 0, max: 20} - filter resonance amount
+- \`.gain()\`: {min: 0, max: 1} - volume level
+- \`.delay()\`: {min: 0, max: 1} - delay mix amount
+- \`.room()\`: {min: 0, max: 1} - reverb size
+- \`.speed()\`: {min: 0.5, max: 2} - playback speed
+- \`.pan()\`: {min: -1, max: 1} - stereo position
+
+IMPORTANT: When generating patterns, default to including sliders unless the user specifically requests static values.
+
 ## CRITICAL: Response Format
 
 When users ask for variations or alternatives, provide MULTIPLE SEPARATE code blocks - each in its own \`\`\`javascript block. This allows users to preview each variation independently before choosing one.
@@ -100,6 +155,27 @@ stack(s("bd sd"))
 **Alternative 2**: Use .cutoff(100) instead
 
 ✅ **DO provide separate, complete code blocks for each variation!**
+
+## Timeline/Segment Workflow
+
+When the user is working with timeline segments:
+- Generate patterns suitable for specific tracks (drums, bass, melody, pads, etc.)
+- Keep segments focused and concise (typically 4-16 cycles or 8-32 seconds)
+- Provide multiple variations that work well in sequence or overlapping
+- Each code block should be a complete, self-contained pattern
+
+**Segment Types and Characteristics:**
+- **Intro segments**: Sparse, building energy gradually
+- **Main sections**: Full arrangement with all elements
+- **Breakdown/drop sections**: Minimal elements, filter sweeps, silence
+- **Bridge segments**: Transitional patterns connecting sections
+- **Outro segments**: Winding down, fadeout elements
+
+**When user has a segment selected:**
+The user's message will include "Currently selected segment: [name] on track [trackName]" followed by the segment's code.
+- Suggest variations or improvements to that specific segment
+- Maintain compatibility with the segment's role in the arrangement
+- Consider the track it's on when suggesting changes
 
 ## Core Concepts
 
@@ -366,10 +442,11 @@ function parseCodeBlocks(markdown) {
 }
 
 // Preview editor component for each code block
-function CodePreview({ code, onInsertCode, validation, previewId, playingPreviewId, setPlayingPreviewId }) {
+function CodePreview({ code, onInsertCode, onAddToTimeline, validation, previewId, playingPreviewId, setPlayingPreviewId, hasTimeline }) {
   const editorRef = useRef(null);
   const containerRef = useRef(null);
   const [editedCode, setEditedCode] = useState(code);
+  const [showTrackSelector, setShowTrackSelector] = useState(false);
   const isPlaying = playingPreviewId === previewId;
 
   useEffect(() => {
@@ -442,7 +519,7 @@ function CodePreview({ code, onInsertCode, validation, previewId, playingPreview
         </div>
       )}
 
-      <div className="mt-2 flex gap-2">
+      <div className="mt-2 flex gap-2 flex-wrap">
         <button
           onClick={handlePlay}
           disabled={hasError}
@@ -484,15 +561,65 @@ function CodePreview({ code, onInsertCode, validation, previewId, playingPreview
           <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
             <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
           </svg>
-          Insert into Main Editor
+          Insert into Editor
         </button>
+        {hasTimeline && (
+          <button
+            onClick={() => setShowTrackSelector(!showTrackSelector)}
+            disabled={hasError}
+            className={`px-3 py-1.5 text-white text-xs font-medium rounded shadow-md transition-colors flex items-center gap-1 ${
+              hasError
+                ? 'bg-gray-400 cursor-not-allowed'
+                : showTrackSelector
+                ? 'bg-purple-700 hover:bg-purple-800'
+                : 'bg-purple-600 hover:bg-purple-700'
+            }`}
+            title="Add segment to timeline"
+          >
+            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M2 6a2 2 0 012-2h12a2 2 0 012 2v2a2 2 0 01-2 2H4a2 2 0 01-2-2V6zM2 12a2 2 0 012-2h12a2 2 0 012 2v2a2 2 0 01-2 2H4a2 2 0 01-2-2v-2z" />
+            </svg>
+            Add to Timeline
+          </button>
+        )}
       </div>
+
+      {showTrackSelector && hasTimeline && onAddToTimeline && (
+        <div className="mt-2 p-2 bg-gray-100 dark:bg-gray-800 rounded border border-gray-300 dark:border-gray-600">
+          <div className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Select track to add segment:
+          </div>
+          <div className="flex flex-col gap-1">
+            {onAddToTimeline.tracks?.map((track) => (
+              <button
+                key={track.id}
+                onClick={() => {
+                  onAddToTimeline.addSegment(track.id, editedCode);
+                  setShowTrackSelector(false);
+                }}
+                className="flex items-center gap-2 px-2 py-1 text-xs rounded bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
+              >
+                <div
+                  className="w-3 h-3 rounded-full flex-shrink-0"
+                  style={{ backgroundColor: track.color }}
+                />
+                <span className="text-gray-900 dark:text-gray-100">{track.name}</span>
+              </button>
+            ))}
+            {(!onAddToTimeline.tracks || onAddToTimeline.tracks.length === 0) && (
+              <div className="text-xs text-gray-500 dark:text-gray-400 italic">
+                No tracks yet. Add a track in the timeline first.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 // Component to render a message with insertable code blocks
-function MessageContent({ content, role, onInsertCode, displayContent, playingPreviewId, setPlayingPreviewId, messageIndex }) {
+function MessageContent({ content, role, onInsertCode, onAddToTimeline, displayContent, playingPreviewId, setPlayingPreviewId, messageIndex, hasTimeline }) {
   // Use displayContent for user messages if available (shows original request, not augmented with code)
   const textToDisplay = role === 'user' && displayContent ? displayContent : content;
   const codeBlocks = parseCodeBlocks(content);
@@ -548,9 +675,11 @@ function MessageContent({ content, role, onInsertCode, displayContent, playingPr
               code={part.content}
               validation={part.validation}
               onInsertCode={onInsertCode}
+              onAddToTimeline={onAddToTimeline}
               previewId={part.previewId}
               playingPreviewId={playingPreviewId}
               setPlayingPreviewId={setPlayingPreviewId}
+              hasTimeline={hasTimeline}
             />
           );
         }
@@ -569,6 +698,11 @@ export function AITab({ context }) {
   const [playingPreviewId, setPlayingPreviewId] = useState(null);
   const messagesEndRef = useRef(null);
 
+  // Timeline integration
+  const timeline = context?.timeline;
+  const selectedSegment = context?.selectedSegment;
+  const hasTimeline = Boolean(timeline);
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
@@ -577,22 +711,59 @@ export function AITab({ context }) {
     scrollToBottom();
   }, [messages]);
 
+  // Handler for adding segment to timeline
+  const handleAddToTimeline = {
+    tracks: timeline?.tracks || [],
+    addSegment: (trackId, code) => {
+      if (timeline?.addSegment && timeline?.addTrack) {
+        // If no tracks exist, create a default track first
+        let targetTrackId = trackId;
+        if (timeline.tracks.length === 0) {
+          targetTrackId = timeline.addTrack('Track 1');
+        }
+
+        // Extract a name from the code or use a default
+        const segmentName = code.split('\n')[0].replace(/^\/\/\s*/, '').slice(0, 30) || 'Untitled';
+        timeline.addSegment(targetTrackId, {
+          code,
+          startTime: timeline.playheadPosition || 0,
+          duration: 8, // Default 8 seconds
+          name: segmentName,
+        });
+      }
+    },
+  };
+
   const sendMessage = async () => {
     if (!input.trim() || !apiKey.trim()) {
       setError('Please enter both an API key and a message');
       return;
     }
 
-    // Get current code from editor to provide context
-    const currentCode = context?.editorRef?.current?.code || '';
+    // Build context message
+    let contextParts = [];
 
-    // Include current code in the message if it exists
-    let messageContent = input;
-    if (currentCode && currentCode.trim()) {
-      messageContent = `Current code in editor:
+    // Include selected segment context if available
+    if (selectedSegment) {
+      contextParts.push(`Currently selected segment: "${selectedSegment.name}" on track "${selectedSegment.trackName}"
+\`\`\`javascript
+${selectedSegment.code}
+\`\`\``);
+    }
+
+    // Include current editor code
+    const currentCode = context?.editorRef?.current?.code || '';
+    if (currentCode && currentCode.trim() && !selectedSegment) {
+      contextParts.push(`Current code in editor:
 \`\`\`javascript
 ${currentCode}
-\`\`\`
+\`\`\``);
+    }
+
+    // Build final message
+    let messageContent = input;
+    if (contextParts.length > 0) {
+      messageContent = `${contextParts.join('\n\n')}
 
 User request: ${input}`;
     }
@@ -749,26 +920,67 @@ Please provide a corrected version with valid Strudel/JavaScript syntax.`;
     }
   };
 
+  // Show API key setup screen if no key is entered
+  if (!apiKey.trim()) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full min-w-full p-8 font-sans bg-white dark:bg-gray-900" style={{ fontFamily }}>
+        <div className="max-w-md w-full">
+          <h3 className="text-2xl font-bold mb-2 text-center text-gray-900 dark:text-white">꩜ AI Assistant</h3>
+          <p className="text-center text-gray-600 dark:text-gray-400 mb-6">
+            Get help with Strudel patterns, mini-notation, effects, and more
+          </p>
+
+          <div className="mb-6">
+            <label htmlFor="api-key" className="block text-sm font-medium mb-2 text-gray-900 dark:text-gray-200">
+              Anthropic API Key:
+            </label>
+            <input
+              id="api-key"
+              type="password"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder="sk-ant-..."
+              className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-600"
+              autoFocus
+            />
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+              Your API key is stored in memory only and is never sent anywhere except directly to Anthropic.
+            </p>
+          </div>
+
+          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md p-4">
+            <p className="text-sm text-gray-700 dark:text-gray-300 mb-2">
+              <strong>Don't have an API key?</strong>
+            </p>
+            <p className="text-xs text-gray-600 dark:text-gray-400">
+              Get one from{' '}
+              <a
+                href="https://console.anthropic.com/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-600 dark:text-blue-400 hover:underline"
+              >
+                console.anthropic.com
+              </a>
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Show chat interface once API key is entered
   return (
     <div className="flex flex-col h-full min-w-full pt-2 font-sans pb-4 px-4" style={{ fontFamily }}>
-      <div className="mb-4">
-        <h3 className="text-xl font-bold mb-2">꩜ AI Assistant</h3>
-        <div className="mb-4">
-          <label htmlFor="api-key" className="block text-sm font-medium mb-1">
-            Anthropic API Key:
-          </label>
-          <input
-            id="api-key"
-            type="password"
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            placeholder="sk-ant-..."
-            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-            Your API key is stored in memory only and is never sent anywhere except directly to Anthropic.
-          </p>
-        </div>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-xl font-bold">꩜ AI Assistant</h3>
+        <button
+          onClick={() => setApiKey('')}
+          className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+          title="Change API key"
+        >
+          Change Key
+        </button>
       </div>
 
       {error && (
@@ -802,10 +1014,12 @@ Please provide a corrected version with valid Strudel/JavaScript syntax.`;
                     content={msg.content}
                     role={msg.role}
                     onInsertCode={handleInsertCode}
+                    onAddToTimeline={handleAddToTimeline}
                     displayContent={msg.displayContent}
                     playingPreviewId={playingPreviewId}
                     setPlayingPreviewId={setPlayingPreviewId}
                     messageIndex={idx}
+                    hasTimeline={hasTimeline}
                   />
                 </div>
               </div>
