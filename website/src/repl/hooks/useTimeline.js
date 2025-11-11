@@ -281,7 +281,7 @@ export function useTimeline() {
   }, []);
 
   // Song management functions
-  const createNewSong = useCallback((name) => {
+  const createNewSong = useCallback((name, switchToNew = false) => {
     const newSongId = generateId();
     const newSong = {
       id: newSongId,
@@ -296,6 +296,15 @@ export function useTimeline() {
       ...prev,
       [newSongId]: newSong,
     }));
+
+    // If switchToNew is true, immediately switch to the new song
+    if (switchToNew) {
+      setCurrentSongId(newSongId);
+      setTracks([]);
+      setDuration(32);
+      setSelectedSegmentId(null);
+      setPlayheadPosition(0);
+    }
 
     return newSongId;
   }, [songs]);

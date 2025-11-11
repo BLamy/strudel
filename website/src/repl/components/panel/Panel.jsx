@@ -90,7 +90,7 @@ const tabNames = {
   console: 'console',
   settings: 'settings',
   ai: 'ai',
-  history: 'history',
+  artifacts: 'artifacts',
 };
 if (TAURI) {
   tabNames.files = 'files';
@@ -141,7 +141,7 @@ function PanelContent({ context, tab }) {
       return <FilesTab />;
     case tabNames.ai:
       return <AITab context={context} />;
-    case tabNames.history:
+    case tabNames.artifacts:
       return <HistoryTab context={context} />;
     default:
       return <WelcomeTab context={context} />;

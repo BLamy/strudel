@@ -47,41 +47,36 @@ export function useSegmentWaveform(canvas, segmentId, isPlaying, color = '#fffff
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // If we have cached data, always show it
-    if (capturedDataRef.current) {
-      drawStaticWaveform(ctx, capturedDataRef.current, canvas.width, canvas.height, color);
-
-      // If not playing, we're done - just show the cached waveform
-      if (!isPlaying) {
-        // Clean up animation frame if any
-        if (animationFrameRef.current) {
-          cancelAnimationFrame(animationFrameRef.current);
-          animationFrameRef.current = null;
-        }
-        return;
-      }
-
-      // If playing but we already have cached data, don't re-record
-      return;
-    }
-
-    // If not playing and no cached data, clear canvas
+    // If not playing, show cached waveform or clear canvas
     if (!isPlaying) {
-      // Clean up animation frame
+      // Clean up animation frame if any
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
         animationFrameRef.current = null;
       }
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Show cached waveform if available, otherwise clear
+      if (capturedDataRef.current) {
+        drawStaticWaveform(ctx, capturedDataRef.current, canvas.width, canvas.height, color);
+      } else {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
       return;
     }
 
-    // Start recording - this is the first time playing
-    console.log('Starting recording for segment:', segmentId);
-    isRecordingRef.current = true;
-    capturedDataRef.current = {
-      samples: [],
-    };
+    // If playing and we have cached data, show live view (don't re-record)
+    if (capturedDataRef.current && !capturedDataRef.current.samples) {
+      // We have cached static waveform data, so don't re-record, just show live visualization
+      console.log('Playing with existing cache, showing live view for segment:', segmentId);
+      isRecordingRef.current = false; // Don't record again
+    } else if (!capturedDataRef.current) {
+      // Start recording - this is the first time playing
+      console.log('Starting recording for segment:', segmentId);
+      isRecordingRef.current = true;
+      capturedDataRef.current = {
+        samples: [],
+      };
+    }
 
     // Get or create analyser
     analyserRef.current = getAnalyserById(segmentId, fftSize, smoothingTimeConstant);
@@ -94,8 +89,8 @@ export function useSegmentWaveform(canvas, segmentId, isPlaying, color = '#fffff
           animationFrameRef.current = null;
         }
 
-        // When playback stops, finalize and cache the waveform
-        if (isRecordingRef.current && capturedDataRef.current && capturedDataRef.current.samples.length > 0) {
+        // When playback stops, finalize and cache the waveform (only if we were recording)
+        if (isRecordingRef.current && capturedDataRef.current && capturedDataRef.current.samples && capturedDataRef.current.samples.length > 0) {
           isRecordingRef.current = false;
 
           // Convert captured samples to static waveform data
@@ -115,6 +110,9 @@ export function useSegmentWaveform(canvas, segmentId, isPlaying, color = '#fffff
 
           // Draw the final static waveform
           drawStaticWaveform(ctx, staticWaveform, canvas.width, canvas.height, color);
+        } else if (capturedDataRef.current && !capturedDataRef.current.samples) {
+          // We stopped playing with cached data, just redraw the cached waveform
+          drawStaticWaveform(ctx, capturedDataRef.current, canvas.width, canvas.height, color);
         }
         return;
       }
@@ -130,8 +128,8 @@ export function useSegmentWaveform(canvas, segmentId, isPlaying, color = '#fffff
         return;
       }
 
-      // Record this frame's data
-      if (isRecordingRef.current) {
+      // Record this frame's data (only if recording for the first time)
+      if (isRecordingRef.current && capturedDataRef.current.samples) {
         const sampleCopy = new Float32Array(dataArray);
         capturedDataRef.current.samples.push(sampleCopy);
 
@@ -144,7 +142,7 @@ export function useSegmentWaveform(canvas, segmentId, isPlaying, color = '#fffff
 
       const bufferLength = analyserRef.current.frequencyBinCount;
 
-      // Draw live oscilloscope while recording
+      // Draw live oscilloscope while playing (always when isPlaying is true)
       ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 

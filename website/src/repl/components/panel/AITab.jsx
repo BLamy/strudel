@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useSettings } from '@src/settings.mjs';
 import { transpiler } from '@strudel/transpiler';
-import { addBeatToHistory } from './HistoryTab';
+import { addBeatToHistory, toggleBeatFavorite, loadHistory } from './HistoryTab';
 import { useAuth } from '@src/auth/AuthContext';
 import { LoginPage } from '@src/auth/LoginPage';
 import { useEncryptedLocalStorage } from '@src/auth/useEncryptedLocalStorage';
@@ -450,7 +450,9 @@ function extractCodeName(code) {
 }
 
 // Component to render a message with waveform code blocks
-function MessageContent({ content, role, onAddToTimeline, displayContent, playingPreviewId, setPlayingPreviewId, messageIndex, hasTimeline }) {
+function MessageContent({ content, role, onAddToTimeline, displayContent, playingPreviewId, setPlayingPreviewId, messageIndex, hasTimeline, codeBlockIds }) {
+  const [, forceUpdate] = useState({});
+
   // Use displayContent for user messages if available (shows original request, not augmented with code)
   const textToDisplay = role === 'user' && displayContent ? displayContent : content;
   const codeBlocks = parseCodeBlocks(content);
@@ -473,13 +475,14 @@ function MessageContent({ content, role, onAddToTimeline, displayContent, playin
       });
     }
 
-    // Add code block with insert button and validation info
+    // Add code block - use the ID from history if available
+    const beatId = codeBlockIds?.[idx];
     parts.push({
       type: 'code',
       content: block.code,
       validation: block.validation,
       key: `code-${idx}`,
-      previewId: `preview-${messageIndex}-${idx}`,
+      uniqueId: beatId || `preview-${messageIndex}-${idx}`, // Use history ID or fallback
     });
 
     lastIndex = block.endIndex;
@@ -494,23 +497,40 @@ function MessageContent({ content, role, onAddToTimeline, displayContent, playin
     });
   }
 
+  // Handler for toggling favorites
+  const handleToggleFavorite = (beatId) => {
+    toggleBeatFavorite(beatId);
+    forceUpdate({}); // Force re-render to show updated favorite status
+  };
+
+  // Get beat data from history
+  const getBeatData = (uniqueId) => {
+    const history = loadHistory();
+    return history.find(beat => beat.id === uniqueId);
+  };
+
   return (
     <div>
       {parts.map((part) => {
         if (part.type === 'text') {
           return <div key={part.key} className="whitespace-pre-wrap">{part.content}</div>;
         } else {
+          const beatData = getBeatData(part.uniqueId);
+          const isFavorite = beatData?.isFavorite || false;
+
           return (
             <WaveformCard
               key={part.key}
               code={part.content}
               name={extractCodeName(part.content)}
-              uniqueId={part.previewId}
+              uniqueId={part.uniqueId}
               validation={part.validation}
               onAddToTimeline={onAddToTimeline}
               playingPreviewId={playingPreviewId}
               setPlayingPreviewId={setPlayingPreviewId}
               hasTimeline={hasTimeline}
+              isFavorite={isFavorite}
+              onToggleFavorite={beatData ? handleToggleFavorite : undefined}
             />
           );
         }
@@ -519,12 +539,35 @@ function MessageContent({ content, role, onAddToTimeline, displayContent, playin
   );
 }
 
+// LocalStorage key for AI chat messages
+const AI_CHAT_STORAGE_KEY = 'strudel_ai_chat_messages';
+
+// Load chat messages from localStorage
+function loadChatMessages() {
+  try {
+    const stored = localStorage.getItem(AI_CHAT_STORAGE_KEY);
+    return stored ? JSON.parse(stored) : [];
+  } catch (error) {
+    console.error('Failed to load chat messages:', error);
+    return [];
+  }
+}
+
+// Save chat messages to localStorage
+function saveChatMessages(messages) {
+  try {
+    localStorage.setItem(AI_CHAT_STORAGE_KEY, JSON.stringify(messages));
+  } catch (error) {
+    console.error('Failed to save chat messages:', error);
+  }
+}
+
 // Internal component with encrypted API key management
 function AITabInternal({ context }) {
   const { fontFamily } = useSettings();
   const { logout } = useAuth();
   const [apiKey, setApiKey] = useEncryptedLocalStorage('anthropic_api_key', '');
-  const [messages, setMessages] = useState([]);
+  const [messages, setMessages] = useState(loadChatMessages());
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -544,24 +587,41 @@ function AITabInternal({ context }) {
     scrollToBottom();
   }, [messages]);
 
+  // Save messages to localStorage whenever they change
+  useEffect(() => {
+    saveChatMessages(messages);
+  }, [messages]);
+
+  const handleClearChat = () => {
+    if (confirm('Are you sure you want to clear the chat history? This cannot be undone.')) {
+      setMessages([]);
+      saveChatMessages([]);
+    }
+  };
+
   // Handler for adding segment to timeline
   const handleAddToTimeline = {
     tracks: timeline?.tracks || [],
-    addSegment: (trackId, code) => {
+    addSegment: (trackId, code, startTime) => {
       if (timeline?.addSegment && timeline?.addTrack) {
-        // If no tracks exist, create a default track first
+        // If trackId is null, create a new track
         let targetTrackId = trackId;
-        if (timeline.tracks.length === 0) {
-          targetTrackId = timeline.addTrack('Track 1');
+        if (!targetTrackId) {
+          const trackNumber = (timeline.tracks?.length || 0) + 1;
+          targetTrackId = timeline.addTrack(`Track ${trackNumber}`);
         }
 
         // Extract a name from the code or use a default
         let segmentName = code.split('\n')[0].replace(/^\/\/\s*/, '').slice(0, 30) || 'Untitled';
         // Strip "Variation #:", "Approach #:", etc. prefixes
         segmentName = segmentName.replace(/^(Variation|Approach)\s+\d+:\s*/i, '');
+
+        // Use provided startTime or default to playhead position
+        const segmentStartTime = startTime !== undefined ? startTime : (timeline.playheadPosition || 0);
+
         timeline.addSegment(targetTrackId, {
           code,
-          startTime: timeline.playheadPosition || 0,
+          startTime: segmentStartTime,
           duration: 8, // Default 8 seconds
           name: segmentName,
         });
@@ -639,25 +699,29 @@ User request: ${input}`;
       }
 
       const data = await response.json();
+
+      // Check for validation errors in the response
+      const codeBlocks = parseCodeBlocks(data.content[0].text);
+      const errors = codeBlocks.filter((block) => !block.validation.valid);
+
+      // Save valid code blocks to history and collect their IDs
+      const codeBlockIds = codeBlocks.map((block) => {
+        if (block.validation.valid) {
+          const beat = addBeatToHistory(block.code);
+          return beat.id;
+        }
+        return null;
+      });
+
       const assistantMessage = {
         role: 'assistant',
         content: data.content[0].text,
+        codeBlockIds, // Store the IDs from history
       };
 
       // Update messages and get the new array
       const updatedMessages = [...messages, userMessage, assistantMessage];
       setMessages(updatedMessages);
-
-      // Check for validation errors in the response
-      const codeBlocks = parseCodeBlocks(assistantMessage.content);
-      const errors = codeBlocks.filter((block) => !block.validation.valid);
-
-      // Save valid code blocks to history
-      codeBlocks.forEach((block) => {
-        if (block.validation.valid) {
-          addBeatToHistory(block.code);
-        }
-      });
 
       // If there are validation errors, automatically send them back to the AI
       if (errors.length > 0) {
@@ -727,19 +791,23 @@ Please provide a corrected version with valid Strudel/JavaScript syntax.`;
       }
 
       const data = await response.json();
+
+      // Save valid code blocks from correction to history and collect their IDs
+      const codeBlocks = parseCodeBlocks(data.content[0].text);
+      const codeBlockIds = codeBlocks.map((block) => {
+        if (block.validation.valid) {
+          const beat = addBeatToHistory(block.code);
+          return beat.id;
+        }
+        return null;
+      });
+
       const assistantMessage = {
         role: 'assistant',
         content: data.content[0].text,
+        codeBlockIds, // Store the IDs from history
       };
       setMessages((prev) => [...prev, assistantMessage]);
-
-      // Save valid code blocks from correction to history
-      const codeBlocks = parseCodeBlocks(assistantMessage.content);
-      codeBlocks.forEach((block) => {
-        if (block.validation.valid) {
-          addBeatToHistory(block.code);
-        }
-      });
     } catch (err) {
       setError(err.message || 'Failed to send correction request');
       console.error('Error:', err);
@@ -760,7 +828,7 @@ Please provide a corrected version with valid Strudel/JavaScript syntax.`;
     return (
       <div className="flex flex-col items-center justify-center h-full min-w-full p-8 font-sans bg-white dark:bg-gray-900" style={{ fontFamily }}>
         <div className="max-w-md w-full">
-          <h3 className="text-2xl font-bold mb-2 text-center text-gray-900 dark:text-white">꩜ AI Assistant</h3>
+          <h3 className="text-2xl font-bold mb-2 text-center text-white">꩜ AI Assistant</h3>
           <p className="text-center text-gray-600 dark:text-gray-400 mb-6">
             Get help with Strudel patterns, mini-notation, effects, and more
           </p>
@@ -808,8 +876,17 @@ Please provide a corrected version with valid Strudel/JavaScript syntax.`;
   return (
     <div className="flex flex-col h-full min-w-full pt-2 font-sans pb-4 px-4" style={{ fontFamily }}>
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-xl font-bold">꩜ AI Assistant</h3>
+        <h3 className="text-xl font-bold text-white flex items-center">꩜ AI Assistant</h3>
         <div className="flex items-center gap-2">
+          {messages.length > 0 && (
+            <button
+              onClick={handleClearChat}
+              className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+              title="Clear chat history"
+            >
+              Clear Chat
+            </button>
+          )}
           <button
             onClick={() => setApiKey('')}
             className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
@@ -844,16 +921,16 @@ Please provide a corrected version with valid Strudel/JavaScript syntax.`;
             {messages.map((msg, idx) => (
               <div
                 key={idx}
-                className={`p-3 rounded-lg ${
+                className={`p-4 rounded-lg ${
                   msg.role === 'user'
                     ? 'bg-blue-100 dark:bg-blue-900/30 ml-8'
                     : 'bg-gray-200 dark:bg-gray-800 mr-8'
                 }`}
               >
-                <div className="text-xs font-semibold mb-1 text-gray-600 dark:text-gray-400">
+                <div className="text-sm font-semibold mb-2 text-gray-600 dark:text-gray-400 flex items-center">
                   {msg.role === 'user' ? 'You' : 'AI Assistant'}
                 </div>
-                <div className="prose dark:prose-invert prose-sm max-w-none">
+                <div className="prose dark:prose-invert prose-base max-w-none leading-relaxed">
                   <MessageContent
                     content={msg.content}
                     role={msg.role}
@@ -863,13 +940,14 @@ Please provide a corrected version with valid Strudel/JavaScript syntax.`;
                     setPlayingPreviewId={setPlayingPreviewId}
                     messageIndex={idx}
                     hasTimeline={hasTimeline}
+                    codeBlockIds={msg.codeBlockIds}
                   />
                 </div>
               </div>
             ))}
             {loading && (
-              <div className="p-3 rounded-lg bg-gray-200 dark:bg-gray-800 mr-8">
-                <div className="text-xs font-semibold mb-1 text-gray-600 dark:text-gray-400">AI Assistant</div>
+              <div className="p-4 rounded-lg bg-gray-200 dark:bg-gray-800 mr-8">
+                <div className="text-sm font-semibold mb-2 text-gray-600 dark:text-gray-400 flex items-center">AI Assistant</div>
                 <div className="flex items-center space-x-2">
                   <div className="animate-pulse">Thinking...</div>
                 </div>

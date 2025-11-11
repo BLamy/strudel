@@ -9,6 +9,20 @@ const RULER_INTERVAL = 1; // Show marker every 1 second
 export function TimelinePanel({ context, onSegmentSelect }) {
   // Use timeline from context instead of creating a new instance
   const timeline = context?.timeline;
+
+  // Add styles to hide scrollbars on track containers
+  useEffect(() => {
+    const style = document.createElement('style');
+    style.textContent = `
+      .track-scroll-container::-webkit-scrollbar {
+        display: none;
+      }
+    `;
+    document.head.appendChild(style);
+    return () => {
+      document.head.removeChild(style);
+    };
+  }, []);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [showSongSelector, setShowSongSelector] = useState(false);
   const [timelineHeight, setTimelineHeight] = useState(250);
@@ -71,8 +85,8 @@ export function TimelinePanel({ context, onSegmentSelect }) {
   };
 
   const handleCreateNewSong = () => {
-    const newSongId = createNewSong(`Song ${getSongsList().length + 1}`);
-    switchSong(newSongId);
+    // Pass true as second parameter to immediately switch to the new song
+    createNewSong(`Song ${getSongsList().length + 1}`, true);
     setShowSongSelector(false);
   };
 
@@ -320,7 +334,7 @@ export function TimelinePanel({ context, onSegmentSelect }) {
                 </div>
                 <div
                   ref={scrollContainerRef}
-                  className="flex-1 overflow-x-auto overflow-y-hidden"
+                  className="flex-1 overflow-x-auto overflow-y-hidden relative"
                   onScroll={(e) => {
                     // Sync all track scrolls with ruler
                     document.querySelectorAll('.track-scroll-container').forEach((el) => {
@@ -341,6 +355,13 @@ export function TimelinePanel({ context, onSegmentSelect }) {
                         </span>
                       </div>
                     ))}
+                    {/* Playhead in ruler */}
+                    <div
+                      className="absolute top-0 w-0.5 bg-red-500 z-20 pointer-events-none"
+                      style={{ left: `${playheadPosition * PIXELS_PER_SECOND}px`, height: '100%' }}
+                    >
+                      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-3 h-3 bg-red-500 rounded-sm" />
+                    </div>
                   </div>
                 </div>
               </div>
@@ -416,19 +437,55 @@ export function TimelinePanel({ context, onSegmentSelect }) {
                       </div>
                     </div>
 
-                    {/* Track Segments - Scrollable with ruler */}
-                    <div className="flex-1 overflow-x-auto overflow-y-hidden track-scroll-container" onScroll={(e) => {
-                      // Sync scroll with ruler
-                      if (scrollContainerRef.current) {
-                        scrollContainerRef.current.scrollLeft = e.target.scrollLeft;
-                      }
-                    }}>
+                    {/* Track Segments - Scrollable with ruler (scrollbar hidden) */}
+                    <div className="flex-1 overflow-x-scroll overflow-y-hidden track-scroll-container"
+                      style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+                      onScroll={(e) => {
+                        const scrollLeft = e.target.scrollLeft;
+                        // Sync scroll with ruler
+                        if (scrollContainerRef.current) {
+                          scrollContainerRef.current.scrollLeft = scrollLeft;
+                        }
+                        // Sync with all other track containers
+                        document.querySelectorAll('.track-scroll-container').forEach((el) => {
+                          if (el !== e.target) {
+                            el.scrollLeft = scrollLeft;
+                          }
+                        });
+                      }}>
                       <div
                         className="relative h-16 bg-gray-900 dark:bg-gray-950"
                         style={{ width: `${contentWidth}px` }}
                         onClick={(e) => {
                           if (e.target === e.currentTarget || e.target.classList.contains('bg-gray-900')) {
                             selectSegment(null);
+                          }
+                        }}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          e.dataTransfer.dropEffect = 'copy';
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          const data = e.dataTransfer.getData('application/strudel-code');
+                          if (data) {
+                            try {
+                              const { code, name } = JSON.parse(data);
+                              // Calculate drop position in seconds based on mouse X position
+                              const rect = e.currentTarget.getBoundingClientRect();
+                              const x = e.clientX - rect.left + e.currentTarget.parentElement.scrollLeft;
+                              const startTime = Math.max(0, x / PIXELS_PER_SECOND);
+
+                              // Add segment to this track
+                              timeline.addSegment(track.id, {
+                                code,
+                                name,
+                                startTime,
+                                duration: 8, // Default 8 seconds
+                              });
+                            } catch (err) {
+                              console.error('Failed to parse dropped data:', err);
+                            }
                           }
                         }}
                       >
@@ -446,23 +503,17 @@ export function TimelinePanel({ context, onSegmentSelect }) {
                             onUpdateSegment={updateSegment}
                           />
                         ))}
+                        {/* Playhead line for this track */}
+                        <div
+                          className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-20 pointer-events-none"
+                          style={{ left: `${playheadPosition * PIXELS_PER_SECOND}px` }}
+                        />
                       </div>
                     </div>
                   </div>
                 ))}
-
-                {/* Playhead (overlays all tracks) */}
-                <div
-                  className="absolute top-0 bottom-0 pointer-events-none"
-                  style={{ left: '192px' }}
-                >
-                  <Playhead
-                    position={playheadPosition}
-                    pixelsPerSecond={PIXELS_PER_SECOND}
-                  />
-                </div>
-                </div>
               </div>
+            </div>
           )}
         </div>
       )}
