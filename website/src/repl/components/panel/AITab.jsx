@@ -1,13 +1,11 @@
 import { useState, useRef, useEffect } from 'react';
 import { useSettings } from '@src/settings.mjs';
 import { transpiler } from '@strudel/transpiler';
-import { StrudelMirror } from '@strudel/codemirror';
-import { getAudioContext, webaudioOutput } from '@strudel/webaudio';
-import { silence } from '@strudel/core';
 import { addBeatToHistory } from './HistoryTab';
 import { useAuth } from '@src/auth/AuthContext';
 import { LoginPage } from '@src/auth/LoginPage';
 import { useEncryptedLocalStorage } from '@src/auth/useEncryptedLocalStorage';
+import { WaveformCard } from './WaveformCard';
 
 const SYSTEM_PROMPT = `You are an expert AI assistant for Strudel, a web-based live coding environment for algorithmic pattern and music generation. Strudel is an official JavaScript port of TidalCycles, originally written in Haskell.
 
@@ -445,196 +443,14 @@ function parseCodeBlocks(markdown) {
   return blocks;
 }
 
-// Preview editor component for each code block
-function CodePreview({ code, onInsertCode, onAddToTimeline, validation, previewId, playingPreviewId, setPlayingPreviewId, hasTimeline }) {
-  const editorRef = useRef(null);
-  const containerRef = useRef(null);
-  const [editedCode, setEditedCode] = useState(code);
-  const [showTrackSelector, setShowTrackSelector] = useState(false);
-  const isPlaying = playingPreviewId === previewId;
-
-  useEffect(() => {
-    if (containerRef.current && !editorRef.current) {
-      const editor = new StrudelMirror({
-        root: containerRef.current,
-        initialCode: code,
-        pattern: silence,
-        defaultOutput: webaudioOutput,
-        getTime: () => getAudioContext().currentTime,
-        transpiler,
-        prebake: async () => Promise.resolve(), // Simple prebake for preview editors
-        drawTime: [0, 0],
-        bgFill: false,
-        solo: false, // Don't stop other repls when this preview plays
-        enableKeyboard: false, // Disable keyboard shortcuts to prevent conflicts
-      });
-      editorRef.current = editor;
-    }
-
-    return () => {
-      if (editorRef.current) {
-        editorRef.current.repl?.stop();
-      }
-    };
-  }, [code]);
-
-  // Stop this preview when another one starts playing
-  useEffect(() => {
-    if (!isPlaying && editorRef.current) {
-      editorRef.current.repl?.stop();
-    }
-  }, [isPlaying]);
-
-  const handlePlay = () => {
-    if (editorRef.current) {
-      if (isPlaying) {
-        // Stop this preview
-        editorRef.current.repl?.stop();
-        setPlayingPreviewId(null);
-      } else {
-        // Stop any other playing preview and start this one
-        editorRef.current.evaluate();
-        setPlayingPreviewId(previewId);
-      }
-    }
-  };
-
-  const handleInsert = () => {
-    onInsertCode(editedCode);
-  };
-
-  const hasError = !validation?.valid;
-
-  return (
-    <div className="my-3">
-      <div className={`border rounded-md overflow-hidden ${hasError ? 'border-red-500 border-2' : 'border-gray-300 dark:border-gray-600'}`}>
-        <div
-          ref={containerRef}
-          className="bg-gray-900 text-gray-100 overflow-auto"
-          style={{ minHeight: '120px', maxHeight: '300px' }}
-        />
-      </div>
-
-      {hasError && (
-        <div className="mt-2 p-2 bg-red-100 dark:bg-red-900/30 border border-red-400 dark:border-red-600 rounded text-red-800 dark:text-red-300 text-xs">
-          <strong>Error:</strong> {validation.error.message}
-          {validation.error.line && (
-            <span> (Line {validation.error.line})</span>
-          )}
-        </div>
-      )}
-
-      <div className="mt-2 flex gap-2 flex-wrap">
-        <button
-          onClick={handlePlay}
-          disabled={hasError}
-          className={`px-3 py-1.5 text-white text-xs font-medium rounded shadow-md transition-colors flex items-center gap-1 ${
-            hasError
-              ? 'bg-gray-400 cursor-not-allowed'
-              : isPlaying
-              ? 'bg-red-600 hover:bg-red-700'
-              : 'bg-green-600 hover:bg-green-700'
-          }`}
-          title={isPlaying ? 'Stop preview' : 'Play preview'}
-        >
-          {isPlaying ? (
-            <>
-              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clipRule="evenodd" />
-              </svg>
-              Stop Preview
-            </>
-          ) : (
-            <>
-              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
-              </svg>
-              Play Preview
-            </>
-          )}
-        </button>
-        <button
-          onClick={handleInsert}
-          disabled={hasError}
-          className={`px-3 py-1.5 text-white text-xs font-medium rounded shadow-md transition-colors flex items-center gap-1 ${
-            hasError
-              ? 'bg-gray-400 cursor-not-allowed'
-              : 'bg-blue-600 hover:bg-blue-700'
-          }`}
-          title="Insert code into main editor and play"
-        >
-          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-            <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
-          </svg>
-          Insert into Editor
-        </button>
-        {hasTimeline && (
-          <button
-            onClick={() => setShowTrackSelector(!showTrackSelector)}
-            disabled={hasError}
-            className={`px-3 py-1.5 text-white text-xs font-medium rounded shadow-md transition-colors flex items-center gap-1 ${
-              hasError
-                ? 'bg-gray-400 cursor-not-allowed'
-                : showTrackSelector
-                ? 'bg-purple-700 hover:bg-purple-800'
-                : 'bg-purple-600 hover:bg-purple-700'
-            }`}
-            title="Add segment to timeline"
-          >
-            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-              <path d="M2 6a2 2 0 012-2h12a2 2 0 012 2v2a2 2 0 01-2 2H4a2 2 0 01-2-2V6zM2 12a2 2 0 012-2h12a2 2 0 012 2v2a2 2 0 01-2 2H4a2 2 0 01-2-2v-2z" />
-            </svg>
-            Add to Timeline
-          </button>
-        )}
-      </div>
-
-      {showTrackSelector && hasTimeline && onAddToTimeline && (
-        <div className="mt-2 p-2 bg-gray-100 dark:bg-gray-800 rounded border border-gray-300 dark:border-gray-600">
-          <div className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Select track to add segment:
-          </div>
-          <div className="flex flex-col gap-1">
-            {onAddToTimeline.tracks?.length > 0 ? (
-              onAddToTimeline.tracks.map((track) => (
-                <button
-                  key={track.id}
-                  onClick={() => {
-                    onAddToTimeline.addSegment(track.id, editedCode);
-                    setShowTrackSelector(false);
-                  }}
-                  className="flex items-center gap-2 px-2 py-1 text-xs rounded bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
-                >
-                  <div
-                    className="w-3 h-3 rounded-full flex-shrink-0"
-                    style={{ backgroundColor: track.color }}
-                  />
-                  <span className="text-gray-900 dark:text-gray-100">{track.name}</span>
-                </button>
-              ))
-            ) : (
-              <button
-                onClick={() => {
-                  onAddToTimeline.addSegment(null, editedCode);
-                  setShowTrackSelector(false);
-                }}
-                className="flex items-center gap-2 px-2 py-1 text-xs rounded bg-blue-500 hover:bg-blue-600 text-white transition-colors"
-              >
-                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
-                </svg>
-                <span>Create Track & Add Segment</span>
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
+// Extract name from code comment
+function extractCodeName(code) {
+  const firstLine = code.split('\n')[0].replace(/^\/\/\s*/, '').trim();
+  return firstLine || 'Untitled';
 }
 
-// Component to render a message with insertable code blocks
-function MessageContent({ content, role, onInsertCode, onAddToTimeline, displayContent, playingPreviewId, setPlayingPreviewId, messageIndex, hasTimeline }) {
+// Component to render a message with waveform code blocks
+function MessageContent({ content, role, onAddToTimeline, displayContent, playingPreviewId, setPlayingPreviewId, messageIndex, hasTimeline }) {
   // Use displayContent for user messages if available (shows original request, not augmented with code)
   const textToDisplay = role === 'user' && displayContent ? displayContent : content;
   const codeBlocks = parseCodeBlocks(content);
@@ -685,13 +501,13 @@ function MessageContent({ content, role, onInsertCode, onAddToTimeline, displayC
           return <div key={part.key} className="whitespace-pre-wrap">{part.content}</div>;
         } else {
           return (
-            <CodePreview
+            <WaveformCard
               key={part.key}
               code={part.content}
+              name={extractCodeName(part.content)}
+              uniqueId={part.previewId}
               validation={part.validation}
-              onInsertCode={onInsertCode}
               onAddToTimeline={onAddToTimeline}
-              previewId={part.previewId}
               playingPreviewId={playingPreviewId}
               setPlayingPreviewId={setPlayingPreviewId}
               hasTimeline={hasTimeline}
@@ -939,21 +755,6 @@ Please provide a corrected version with valid Strudel/JavaScript syntax.`;
     }
   };
 
-  const handleInsertCode = (code) => {
-    if (context?.editorRef?.current) {
-      // Stop any playing preview
-      setPlayingPreviewId(null);
-
-      // Set the code in the editor
-      context.editorRef.current.setCode(code);
-
-      // Evaluate the code to make it play
-      if (context.editorRef.current.evaluate) {
-        context.editorRef.current.evaluate();
-      }
-    }
-  };
-
   // Show API key setup screen if no key is entered
   if (!apiKey.trim()) {
     return (
@@ -1056,7 +857,6 @@ Please provide a corrected version with valid Strudel/JavaScript syntax.`;
                   <MessageContent
                     content={msg.content}
                     role={msg.role}
-                    onInsertCode={handleInsertCode}
                     onAddToTimeline={handleAddToTimeline}
                     displayContent={msg.displayContent}
                     playingPreviewId={playingPreviewId}
