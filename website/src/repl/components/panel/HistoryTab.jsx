@@ -31,11 +31,14 @@ function saveHistory(history) {
 // Add a beat to history
 export function addBeatToHistory(code, metadata = {}) {
   const history = loadHistory();
+  let beatName = metadata.name || code.split('\n')[0].replace(/^\/\/\s*/, '').slice(0, 50) || 'Untitled';
+  // Strip "Variation #:", "Approach #:", etc. prefixes
+  beatName = beatName.replace(/^(Variation|Approach)\s+\d+:\s*/i, '');
   const beat = {
     id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
     code,
     timestamp: Date.now(),
-    name: metadata.name || code.split('\n')[0].replace(/^\/\/\s*/, '').slice(0, 50) || 'Untitled',
+    name: beatName,
     ...metadata,
   };
 
@@ -294,7 +297,9 @@ export function HistoryTab({ context }) {
         }
 
         // Extract a name from the code or use a default
-        const segmentName = code.split('\n')[0].replace(/^\/\/\s*/, '').slice(0, 30) || 'Untitled';
+        let segmentName = code.split('\n')[0].replace(/^\/\/\s*/, '').slice(0, 30) || 'Untitled';
+        // Strip "Variation #:", "Approach #:", etc. prefixes
+        segmentName = segmentName.replace(/^(Variation|Approach)\s+\d+:\s*/i, '');
         timeline.addSegment(targetTrackId, {
           code,
           startTime: timeline.playheadPosition || 0,

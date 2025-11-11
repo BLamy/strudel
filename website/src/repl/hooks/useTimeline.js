@@ -224,14 +224,22 @@ export function useTimeline() {
       return 'silence';
     }
 
+    // Wrap each segment's code with .analyze() to enable waveform visualization
+    const wrapWithAnalyze = (segment) => {
+      const code = segment.code.trim();
+      if (!code || code === 'silence') return code;
+      // Wrap the code in parentheses and add .analyze(segmentId)
+      return `(${code}).analyze("${segment.id}")`;
+    };
+
     if (activeSegments.length === 1) {
-      return activeSegments[0].code.trim();
+      return wrapWithAnalyze(activeSegments[0]);
     }
 
     // Multiple segments - use stack() with proper formatting
-    // Trim each segment's code and ensure proper comma separation
+    // Wrap each segment's code with analyze and ensure proper comma separation
     const segmentCodes = activeSegments
-      .map((seg) => seg.code.trim())
+      .map((seg) => wrapWithAnalyze(seg))
       .filter((code) => code && code !== 'silence'); // Filter out empty or silence
 
     if (segmentCodes.length === 0) {

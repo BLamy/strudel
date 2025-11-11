@@ -347,6 +347,7 @@ export function TimelinePanel({ context, onSegmentSelect }) {
                         track={track}
                         pixelsPerSecond={PIXELS_PER_SECOND}
                         selectedSegmentId={selectedSegmentId}
+                        playheadPosition={playheadPosition}
                         onSelectSegment={selectSegment}
                         onRemoveSegment={removeSegment}
                         onRemoveTrack={removeTrack}

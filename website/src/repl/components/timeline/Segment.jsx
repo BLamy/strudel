@@ -1,22 +1,44 @@
 import { useRef, useState, useEffect } from 'react';
+import { useSegmentWaveform } from '../../hooks/useSegmentWaveform';
 
 export function Segment({
   segment,
   trackColor,
   pixelsPerSecond,
   isSelected,
+  playheadPosition,
   onSelect,
   onRemove,
   onUpdateSegment,
   trackId,
 }) {
   const segmentRef = useRef(null);
+  const canvasRef = useRef(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const dragStartRef = useRef({ x: 0, startTime: 0, duration: 0 });
 
   const left = segment.startTime * pixelsPerSecond;
   const width = segment.duration * pixelsPerSecond;
+
+  // Determine if this segment is currently playing
+  const isPlaying =
+    playheadPosition >= segment.startTime &&
+    playheadPosition < segment.startTime + segment.duration;
+
+  // Use waveform visualization hook
+  useSegmentWaveform(
+    canvasRef.current,
+    segment.id,
+    isPlaying,
+    trackColor,
+    {
+      fftSize: 2048, // Must be power of 2 between 32 and 32768
+      smoothingTimeConstant: 0.8,
+      lineWidth: 1.5,
+      scale: 0.7,
+    }
+  );
 
   const handleClick = (e) => {
     if (!isDragging && !isResizing) {
@@ -129,16 +151,25 @@ export function Segment({
       onClick={handleClick}
       title={`${segment.name} (${segment.duration}s)`}
     >
+      {/* Waveform Canvas */}
+      <canvas
+        ref={canvasRef}
+        className="absolute inset-0 pointer-events-none opacity-40"
+        width={Math.max(width, 10)}
+        height={60}
+        style={{ width: '100%', height: '100%' }}
+      />
+
       {/* Left resize handle */}
       {isSelected && (
         <div
-          className="resize-handle absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize bg-white bg-opacity-20 hover:bg-opacity-40 transition-colors"
+          className="resize-handle absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize bg-white bg-opacity-20 hover:bg-opacity-40 transition-colors z-10"
           onMouseDown={(e) => handleResizeStart(e, 'left')}
           title="Resize segment"
         />
       )}
 
-      <div className="h-full flex items-center justify-between px-2 overflow-hidden pointer-events-none">
+      <div className="h-full flex items-center justify-between px-2 overflow-hidden pointer-events-none relative z-10">
         <div className="flex-1 overflow-hidden">
           <div className="text-xs font-semibold text-white truncate flex items-center gap-1">
             {segment.name}
@@ -194,7 +225,7 @@ export function Segment({
       {/* Right resize handle */}
       {isSelected && (
         <div
-          className="resize-handle absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize bg-white bg-opacity-20 hover:bg-opacity-40 transition-colors"
+          className="resize-handle absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize bg-white bg-opacity-20 hover:bg-opacity-40 transition-colors z-10"
           onMouseDown={(e) => handleResizeStart(e, 'right')}
           title="Resize segment"
         />

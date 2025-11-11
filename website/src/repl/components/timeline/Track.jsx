@@ -4,6 +4,7 @@ export function Track({
   track,
   pixelsPerSecond,
   selectedSegmentId,
+  playheadPosition,
   onSelectSegment,
   onRemoveSegment,
   onRemoveTrack,
@@ -100,6 +101,7 @@ export function Track({
             trackColor={track.color}
             pixelsPerSecond={pixelsPerSecond}
             isSelected={selectedSegmentId === segment.id}
+            playheadPosition={playheadPosition}
             onSelect={onSelectSegment}
             onRemove={(segmentId) => onRemoveSegment(track.id, segmentId)}
             onUpdateSegment={onUpdateSegment}

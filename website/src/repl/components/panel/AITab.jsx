@@ -740,7 +740,9 @@ function AITabInternal({ context }) {
         }
 
         // Extract a name from the code or use a default
-        const segmentName = code.split('\n')[0].replace(/^\/\/\s*/, '').slice(0, 30) || 'Untitled';
+        let segmentName = code.split('\n')[0].replace(/^\/\/\s*/, '').slice(0, 30) || 'Untitled';
+        // Strip "Variation #:", "Approach #:", etc. prefixes
+        segmentName = segmentName.replace(/^(Variation|Approach)\s+\d+:\s*/i, '');
         timeline.addSegment(targetTrackId, {
           code,
           startTime: timeline.playheadPosition || 0,
